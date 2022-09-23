@@ -1,0 +1,76 @@
+---
+- name: Install awx on k3s
+  hosts: jenkins
+
+  tasks:
+
+  - name: Disable firewalld
+    shell: systemctl disable firewalld --now
+
+  - name: Desabilitando SELINUX
+    lineinfile:
+      dest: /etc/selinux/config
+      regexp: "^#?SELINUX=enforcing" 
+      line: SELINUX=disabled
+
+#  - name: Reboot host and wait for it to restart
+#    reboot:
+#      msg: "Reboot initiated by Ansible"
+#      connect_timeout: 5
+#      reboot_timeout: 60
+#      pre_reboot_delay: 0
+#      post_reboot_delay: 30
+#      test_command: whoami    
+
+  - name: remove old docker versions
+    shell: |
+      yum remove -y docker \
+                        docker-client \
+                        docker-client-latest \
+                        docker-common \
+                        docker-latest \
+                        docker-latest-logrotate \
+                        docker-logrotate \
+                        docker-engine \
+                        podman \
+                        buildah
+
+  - name: yum install -y yum-utils and add repo docker-ce
+    shell: |
+      yum install -y yum-utils ;\
+      yum-config-manager \
+          --add-repo \
+          https://download.docker.com/linux/centos/docker-ce.repo
+
+  - name: Install the latest packges
+    ansible.builtin.yum:
+      name: 
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-compose-plugin
+      state: latest
+
+  - name: Install Docker-compose
+    shell: |
+      curl -L https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose ;\
+      chmod 755 /usr/local/bin/docker-compose
+    ignore_errors: true
+
+  - name: start and enable service
+    shell: |
+      systemctl start docker ;\
+      systemctl enable docker
+
+  - name: copy docker-compose yaml jenkinsci/blueocean
+    ansible.builtin.copy:
+      src: docker/docker-compose.yml
+      dest: /tmp/docker-compose.yml
+      owner: root
+      group: root
+      mode: '0777'
+
+  - name: start container
+    shell: |
+      cd /tmp ;\
+      docker-compose up -d
